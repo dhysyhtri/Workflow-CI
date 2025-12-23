@@ -1,4 +1,4 @@
-name: CI Workflow Amazon Sales (MLflow + Docker Stable)
+name: CI/CD Amazon Sales MLflow + Docker + DagsHub
 
 on:
   push:
@@ -17,36 +17,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout repository
-    - name: Checkout Code
+    # 1️⃣ Checkout code
+    - name: Run actions/checkout@v3
       uses: actions/checkout@v3
 
-    # 2. Set up Python 3.12.7
+    # 2️⃣ Set up Python 3.12.7
     - name: Set up Python 3.12.7
       uses: actions/setup-python@v4
       with:
-        python-version: "3.12.7"
+        python-version: 3.12.7
 
-    # 3. Check Environment
+    # 3️⃣ Check environment
     - name: Check Env
       run: |
         python --version
         pip --version
         ls -R
 
-    # 4. Install Python dependencies
-    - name: Install Dependencies
+    # 4️⃣ Install Python dependencies
+    - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib cloudpickle
+        pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib
 
-    # 5. Run MLflow Project (Training & logging metrics/params only)
+    # 5️⃣ Run MLflow Project (training model)
     - name: Run MLflow Project
       run: |
         cd MLProject
-        mlflow run . --env-manager=local --experiment-name "amazon-sales-ci"
+        python modelling.py
 
-    # 6. Get latest MLflow run_id
+    # 6️⃣ Get latest MLflow run_id
     - name: Get latest MLflow run_id
       id: get_run
       run: |
@@ -54,41 +54,39 @@ jobs:
         echo "run_id=$run_id" >> $GITHUB_OUTPUT
         echo "Latest Run ID: $run_id"
 
-    # 7. Upload model.pkl to GitHub Artifacts
-    - name: Upload Model Artifact (.pkl)
+    # 7️⃣ (Optional) Install Python dependencies again if needed
+    - name: Install Python dependencies (extra)
+      run: |
+        pip install --upgrade pip
+        pip install pandas numpy scikit-learn joblib mlflow
+
+    # 8️⃣ Upload model.pkl (optional, artifact)
+    - name: Upload to GitHub Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: amazon-sales-model
         path: MLProject/model.pkl
 
-    # 8. Build Docker Image from model.pkl
-    - name: Build Docker Image
+    # 9️⃣ Build Docker Image from MLflow model
+    - name: Build Docker Model
       run: |
-        cd MLProject
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
         TAG="latest"
+        RUN_ID="${{ steps.get_run.outputs.run_id }}"
+        mlflow models build-docker \
+          -m "runs:/$RUN_ID/model" \
+          -n "$IMAGE_NAME" \
+          --enable-mlserver
 
-        # Dockerfile inline tanpa requirements.txt
-        echo '
-        FROM python:3.12-slim
-        WORKDIR /app
-        COPY model.pkl .
-        RUN pip install --no-cache-dir pandas numpy scikit-learn joblib
-        CMD ["python", "-c", "import joblib; model=joblib.load(\"model.pkl\"); print(\"Model siap digunakan\")"]
-        ' > Dockerfile
-
-        docker build -t "$IMAGE_NAME:$TAG" .
-
-    # 9. Docker Login
-    - name: Docker Login
+    # 🔟 Log in to Docker Hub
+    - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    # 10. Push Docker Image
+    # 1️⃣1️⃣ Push Docker Image
     - name: Push Docker Image
       run: |
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
-        TAG="latest"
-        docker push "$IMAGE_NAME:$TAG"
+        docker push "$IMAGE_NAME:latest"
