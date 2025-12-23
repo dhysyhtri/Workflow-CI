@@ -66,24 +66,15 @@ jobs:
           -n "$IMAGE_NAME:$TAG" \
           --enable-mlserver
 
-        # Tambah tag unik timestamp
-        VERSION_TAG=$(date +%Y%m%d%H%M%S)
-        docker tag "$IMAGE_NAME:$TAG" "$IMAGE_NAME:$VERSION_TAG"
-        echo "Built Docker image with tags: $TAG and $VERSION_TAG"
-
-    # 8. Docker Login
     - name: Docker Login
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    # 9. Push Docker Image
     - name: Push Docker Image
       run: |
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
         TAG="latest"
-        VERSION_TAG=$(date +%Y%m%d%H%M%S)
 
         docker push "$IMAGE_NAME:$TAG"
-        docker push "$IMAGE_NAME:$VERSION_TAG"
