@@ -1,4 +1,4 @@
-name: CI Workflow 
+name: CI Workflow Amazon Sales
 
 on:
   push:
@@ -21,25 +21,32 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    # 2. Setup Python
-    - name: Setup Python 3.12
+    # 2. Set up Python 3.12.7
+    - name: Set up Python 3.12.7
       uses: actions/setup-python@v4
       with:
         python-version: "3.12.7"
 
-    # 3. Install Dependencies
+    # 3. Check Environment
+    - name: Check Env
+      run: |
+        python --version
+        pip --version
+        ls -R
+
+    # 4. Install Python dependencies
     - name: Install Dependencies
       run: |
         pip install --upgrade pip
         pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib cloudpickle
 
-    # 4. Run MLflow Project (Training + log ke DagsHub)
+    # 5. Run MLflow Project (Training)
     - name: Run MLflow Project
       run: |
         cd MLProject
         mlflow run . --env-manager=local --experiment-name "amazon-sales-ci"
 
-    # 5. Get latest run_id
+    # 6. Get latest MLflow run_id
     - name: Get latest MLflow run_id
       id: get_run
       run: |
@@ -47,34 +54,45 @@ jobs:
         echo "run_id=$run_id" >> $GITHUB_OUTPUT
         echo "Latest Run ID: $run_id"
 
-    # 6. Verify MLflow Model Artifact
-    - name: Verify MLflow Model Artifact
+    # 7. Install Python dependencies (again if needed for Docker build)
+    - name: Install Python dependencies for Docker
       run: |
-        echo "Listing artifacts in model path..."
-        mlflow artifacts list --run-id ${{ steps.get_run.outputs.run_id }} --artifact-path model
+        pip install --upgrade pip
+        pip install joblib scikit-learn pandas numpy
 
-    # 7. Build Docker Image dari MLflow Model
+    # 8. Upload MLflow artifacts to GitHub
+    - name: Upload MLflow Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mlflow-artifacts
+        path: MLProject/model.pkl
+
+    # 9. Build Docker Model
     - name: Build Docker Image
       run: |
         cd MLProject
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
         TAG="latest"
-
-        # Build Docker image
         mlflow models build-docker \
           -m "runs:/${{ steps.get_run.outputs.run_id }}/model" \
           -n "$IMAGE_NAME:$TAG" \
           --enable-mlserver
 
+    # 10. Log in to Docker Hub
     - name: Docker Login
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    # 11. Tag Docker Image (optional, tapi tetap pakai latest)
+    - name: Tag Docker Image
+      run: |
+        IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
+        docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:latest"
+
+    # 12. Push Docker Image
     - name: Push Docker Image
       run: |
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
-        TAG="latest"
-
-        docker push "$IMAGE_NAME:$TAG"
+        docker push "$IMAGE_NAME:latest"
