@@ -1,4 +1,4 @@
-name: CI Workflow Advance (Amazon Sales + DagsHub + Docker)
+name: CI Workflow 
 
 on:
   push:
@@ -33,13 +33,13 @@ jobs:
         pip install --upgrade pip
         pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib cloudpickle
 
-    # 4. Run MLflow Project (Training + Log ke DagsHub)
+    # 4. Run MLflow Project (Training + log ke DagsHub)
     - name: Run MLflow Project
       run: |
         cd MLProject
         mlflow run . --env-manager=local --experiment-name "amazon-sales-ci"
 
-    # 5. Ambil latest run_id
+    # 5. Get latest run_id
     - name: Get latest MLflow run_id
       id: get_run
       run: |
@@ -47,21 +47,29 @@ jobs:
         echo "run_id=$run_id" >> $GITHUB_OUTPUT
         echo "Latest Run ID: $run_id"
 
-    # 6. Upload MLflow artifacts (opsional)
-    - name: Upload MLflow Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: mlflow-artifacts
-        path: MLProject/mlruns/
+    # 6. Verify MLflow Model Artifact
+    - name: Verify MLflow Model Artifact
+      run: |
+        echo "Listing artifacts in model path..."
+        mlflow artifacts list -r ${{ steps.get_run.outputs.run_id }} -p model
 
     # 7. Build Docker Image dari MLflow Model
     - name: Build Docker Image
       run: |
         cd MLProject
+        IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
+        TAG="latest"
+
+        # Build Docker image
         mlflow models build-docker \
           -m "runs:/${{ steps.get_run.outputs.run_id }}/model" \
-          -n "${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model:latest" \
+          -n "$IMAGE_NAME:$TAG" \
           --enable-mlserver
+
+        # Tambah tag unik timestamp
+        VERSION_TAG=$(date +%Y%m%d%H%M%S)
+        docker tag "$IMAGE_NAME:$TAG" "$IMAGE_NAME:$VERSION_TAG"
+        echo "Built Docker image with tags: $TAG and $VERSION_TAG"
 
     # 8. Docker Login
     - name: Docker Login
@@ -73,4 +81,9 @@ jobs:
     # 9. Push Docker Image
     - name: Push Docker Image
       run: |
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model:latest
+        IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
+        TAG="latest"
+        VERSION_TAG=$(date +%Y%m%d%H%M%S)
+
+        docker push "$IMAGE_NAME:$TAG"
+        docker push "$IMAGE_NAME:$VERSION_TAG"
