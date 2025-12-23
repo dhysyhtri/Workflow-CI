@@ -1,0 +1,17 @@
+name: amazon-sales-env
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12.7
+  - pip<=25.3
+  - pip:
+      - mlflow==2.19.0
+      - dagshub
+      - pandas
+      - numpy
+      - scikit-learn
+      - scipy
+      - joblib
+      - cloudpickle
