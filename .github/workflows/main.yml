@@ -1,0 +1,77 @@
+name: CI Workflow
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  DAGSHUB_USERNAME: "username_dagshubmu"
+  DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+  MLFLOW_TRACKING_URI: "https://dagshub.com/${{ env.DAGSHUB_USERNAME }}/amazon-sales-workflow.mlflow"
+  MLFLOW_TRACKING_USERNAME: ${{ env.DAGSHUB_USERNAME }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 2. Setup Python
+    - name: Setup Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12.7"
+
+    # 3. Install Dependencies
+    - name: Install Dependencies
+      run: |
+        pip install --upgrade pip
+        pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib cloudpickle
+
+    # 4. Run MLflow Project (training & log ke DagsHub)
+    - name: Run MLflow Project
+      run: |
+        cd MLProject
+        mlflow run . --env-manager=local --experiment-name "amazon-sales-ci"
+
+    # 5. Ambil latest run_id dari DagsHub
+    - name: Get latest run_id
+      id: get_run
+      run: |
+        run_id=$(python - <<EOF
+import mlflow
+runs = mlflow.search_runs(
+    experiment_names=["amazon-sales-ci"],
+    order_by=["start_time DESC"],
+    max_results=1
+)
+print(runs.iloc[0].run_id)
+EOF
+        )
+        echo "run_id=$run_id" >> $GITHUB_OUTPUT
+        echo "Latest Run ID: $run_id"
+
+    # 6. Build Docker Image dari MLflow Model
+    - name: Build Docker Image
+      run: |
+        mlflow models build-docker \
+          -m "runs:/${{ steps.get_run.outputs.run_id }}/model" \
+          -n "${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model:latest" \
+          --enable-mlserver
+
+    # 7. Docker Login
+    - name: Docker Login
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # 8. Push Docker Image
+    - name: Push Docker Image
+      run: |
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model:latest
