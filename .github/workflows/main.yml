@@ -51,7 +51,7 @@ jobs:
     - name: Verify MLflow Model Artifact
       run: |
         echo "Listing artifacts in model path..."
-        mlflow artifacts list -r ${{ steps.get_run.outputs.run_id }} -p model
+        mlflow artifacts list --run-id ${{ steps.get_run.outputs.run_id }} --artifact-path model
 
     # 7. Build Docker Image dari MLflow Model
     - name: Build Docker Image
