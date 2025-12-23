@@ -1,4 +1,4 @@
-name: CI Workflow Amazon Sales (Stable MLflow + Docker)
+name: CI Workflow Amazon Sales (MLflow + Docker Stable)
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
         pip install --upgrade pip
         pip install mlflow==2.19.0 dagshub pandas numpy scikit-learn joblib cloudpickle
 
-    # 5. Run MLflow Project (Training & logging only metrics/params to DagsHub)
+    # 5. Run MLflow Project (Training & logging metrics/params only)
     - name: Run MLflow Project
       run: |
         cd MLProject
@@ -68,19 +68,18 @@ jobs:
         IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/amazon-mlflow-model"
         TAG="latest"
 
-        # Buat Dockerfile minimal untuk menjalankan model.pkl
+        # Dockerfile inline tanpa requirements.txt
         echo '
         FROM python:3.12-slim
         WORKDIR /app
         COPY model.pkl .
-        COPY requirements.txt .
-        RUN pip install --no-cache-dir -r requirements.txt
+        RUN pip install --no-cache-dir pandas numpy scikit-learn joblib
         CMD ["python", "-c", "import joblib; model=joblib.load(\"model.pkl\"); print(\"Model siap digunakan\")"]
         ' > Dockerfile
 
         docker build -t "$IMAGE_NAME:$TAG" .
 
-    # 9. Log in to Docker Hub
+    # 9. Docker Login
     - name: Docker Login
       uses: docker/login-action@v3
       with:
